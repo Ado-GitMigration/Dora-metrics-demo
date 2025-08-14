@@ -7,7 +7,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment:
-      name: demo_prod
+      name: production
     steps:
       - name: Demo
         run: echo "Deploying to production..."
