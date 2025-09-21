@@ -1,0 +1,14 @@
+---
+name: Production Incident
+about: Track production incidents for MTTR calculation
+labels: incident, severity-high
+---
+
+## Incident Details
+- **Detection Time**: 
+- **Impact**: 
+- **Root Cause**: 
+- **Resolution Time**: 
+
+## DORA Metrics Tracking
+This issue will be used to calculate Mean Time to Recovery (MTTR)
