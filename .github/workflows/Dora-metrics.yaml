@@ -27,15 +27,21 @@ jobs:
           echo "Deployment frequency: $(echo "scale=2; $DEPLOYMENTS_30_DAYS / 4.3" | bc -l || echo "N/A")" per week
           
       - name: Calculate Lead Time for Changes
-        if: github.event.pull_request.merged == true
         run: |
           echo "=== LEAD TIME FOR CHANGES ==="
-          PR_CREATED="${{ github.event.pull_request.created_at }}"
-          PR_MERGED="${{ github.event.pull_request.merged_at }}"
-          CREATED_SECONDS=$(date -d "$PR_CREATED" +%s)
-          MERGED_SECONDS=$(date -d "$PR_MERGED" +%s)
-          LEAD_TIME_HOURS=$(( ($MERGED_SECONDS - $CREATED_SECONDS) / 3600 ))
-          echo "PR #${{ github.event.pull_request.number }} lead time: $LEAD_TIME_HOURS hours"
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.pull_request.merged }}" = "true" ]; then
+            PR_CREATED="${{ github.event.pull_request.created_at }}"
+            PR_MERGED="${{ github.event.pull_request.merged_at }}"
+            CREATED_SECONDS=$(date -d "$PR_CREATED" +%s)
+            MERGED_SECONDS=$(date -d "$PR_MERGED" +%s)
+            LEAD_TIME_HOURS=$(( ($MERGED_SECONDS - $CREATED_SECONDS) / 3600 ))
+            echo "PR #${{ github.event.pull_request.number }} lead time: $LEAD_TIME_HOURS hours"
+          else
+            echo "Calculating lead time from recent merged PRs..."
+            gh api repos/${{ github.repository }}/pulls?state=closed \
+              --jq '.[] | select(.merged_at != null) | "PR #\(.number): \((.merged_at | fromdateiso8601) - (.created_at | fromdateiso8601)) seconds = \(((.merged_at | fromdateiso8601) - (.created_at | fromdateiso8601))/3600 | floor) hours"' \
+              | head -5
+          fi
           
       - name: Calculate Change Failure Rate
         run: |
@@ -53,15 +59,21 @@ jobs:
           fi
           
       - name: Calculate Mean Time to Recovery
-        if: github.event_name == 'issues' && github.event.action == 'closed' && contains(github.event.issue.labels.*.name, 'incident')
         run: |
           echo "=== MEAN TIME TO RECOVERY ==="
-          ISSUE_CREATED="${{ github.event.issue.created_at }}"
-          ISSUE_CLOSED=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          CREATED_SECONDS=$(date -d "$ISSUE_CREATED" +%s)
-          CLOSED_SECONDS=$(date -d "$ISSUE_CLOSED" +%s)
-          RECOVERY_TIME_HOURS=$(( ($CLOSED_SECONDS - $CREATED_SECONDS) / 3600 ))
-          echo "Incident #${{ github.event.issue.number }} recovery time: $RECOVERY_TIME_HOURS hours"
+          if [ "${{ github.event_name }}" = "issues" ] && [ "${{ github.event.action }}" = "closed" ] && echo '${{ toJson(github.event.issue.labels) }}' | grep -q "incident"; then
+            ISSUE_CREATED="${{ github.event.issue.created_at }}"
+            ISSUE_CLOSED=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+            CREATED_SECONDS=$(date -d "$ISSUE_CREATED" +%s)
+            CLOSED_SECONDS=$(date -d "$ISSUE_CLOSED" +%s)
+            RECOVERY_TIME_HOURS=$(( ($CLOSED_SECONDS - $CREATED_SECONDS) / 3600 ))
+            echo "Incident #${{ github.event.issue.number }} recovery time: $RECOVERY_TIME_HOURS hours"
+          else
+            echo "Calculating MTTR from recent incident issues..."
+            gh api repos/${{ github.repository }}/issues?state=closed\&labels=incident \
+              --jq '.[] | select(.closed_at != null) | "Issue #\(.number): \((.closed_at | fromdateiso8601) - (.created_at | fromdateiso8601)) seconds = \(((.closed_at | fromdateiso8601) - (.created_at | fromdateiso8601))/3600 | floor) hours"' \
+              | head -3 || echo "No incident issues found - create an issue with 'incident' label to track MTTR"
+          fi
           
       - name: Store Metrics Summary
         run: |
