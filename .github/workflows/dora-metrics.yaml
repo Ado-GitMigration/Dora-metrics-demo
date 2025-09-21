@@ -21,10 +21,10 @@ jobs:
       - name: Calculate Deployment Frequency
         run: |
           echo "=== DEPLOYMENT FREQUENCY ==="
-          DEPLOYMENTS_30_DAYS=$(gh api repos/${{ github.repository }}/actions/workflows/deploy.yml/runs \
+          DEPLOYMENTS_30_DAYS=$(gh api repos/${{ github.repository }}/actions/runs \
             --jq '[.workflow_runs[] | select(.created_at > (now - 30*24*3600 | strftime("%Y-%m-%dT%H:%M:%SZ")))] | length')
           echo "Deployments in last 30 days: $DEPLOYMENTS_30_DAYS"
-          echo "Deployment frequency: $(echo "scale=2; $DEPLOYMENTS_30_DAYS / 4.3" | bc) per week"
+          echo "Deployment frequency: $(echo "scale=2; $DEPLOYMENTS_30_DAYS / 4.3" | bc -l || echo "N/A")" per week
           
       - name: Calculate Lead Time for Changes
         if: github.event.pull_request.merged == true
@@ -40,18 +40,20 @@ jobs:
       - name: Calculate Change Failure Rate
         run: |
           echo "=== CHANGE FAILURE RATE ==="
-          TOTAL_RUNS=$(gh api repos/${{ github.repository }}/actions/workflows/deploy.yml/runs --jq '.total_count')
-          FAILED_RUNS=$(gh api repos/${{ github.repository }}/actions/workflows/deploy.yml/runs \
+          TOTAL_RUNS=$(gh api repos/${{ github.repository }}/actions/runs --jq '.total_count')
+          FAILED_RUNS=$(gh api repos/${{ github.repository }}/actions/runs \
             --jq '[.workflow_runs[] | select(.conclusion == "failure")] | length')
           if [ "$TOTAL_RUNS" -gt 0 ]; then
-            FAILURE_RATE=$(echo "scale=2; $FAILED_RUNS * 100 / $TOTAL_RUNS" | bc)
+            FAILURE_RATE=$(echo "scale=2; $FAILED_RUNS * 100 / $TOTAL_RUNS" | bc -l || echo "0")
             echo "Total runs: $TOTAL_RUNS"
             echo "Failed runs: $FAILED_RUNS"
             echo "Change failure rate: $FAILURE_RATE%"
+          else
+            echo "No workflow runs found"
           fi
           
       - name: Calculate Mean Time to Recovery
-        if: github.event.issue.labels[*].name contains 'incident' && github.event.action == 'closed'
+        if: github.event_name == 'issues' && github.event.action == 'closed' && contains(github.event.issue.labels.*.name, 'incident')
         run: |
           echo "=== MEAN TIME TO RECOVERY ==="
           ISSUE_CREATED="${{ github.event.issue.created_at }}"
@@ -61,10 +63,11 @@ jobs:
           RECOVERY_TIME_HOURS=$(( ($CLOSED_SECONDS - $CREATED_SECONDS) / 3600 ))
           echo "Incident #${{ github.event.issue.number }} recovery time: $RECOVERY_TIME_HOURS hours"
           
-      - name: Store Metrics
+      - name: Store Metrics Summary
         run: |
           echo "=== DORA METRICS SUMMARY ==="
           echo "Repository: ${{ github.repository }}"
           echo "Timestamp: $(date -u)"
           echo "Event: ${{ github.event_name }}"
-          echo "Metrics calculated and logged above"
+          echo "Actor: ${{ github.actor }}"
+          echo "Metrics calculated successfully"
